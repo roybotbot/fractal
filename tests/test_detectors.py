@@ -540,6 +540,38 @@ class TestSelfContradiction:
         signals = detector.check_self_contradiction(output)
         assert len(signals) == 0
 
+    def test_typescript_tests_with_describe_no_signal(self):
+        """Tests written with describe/it blocks should not trigger."""
+        output = (
+            "Tests have been written for all edge cases.\n\n"
+            "```typescript\n"
+            "describe('celsiusToFahrenheit', () => {\n"
+            "  it('converts freezing point', () => {\n"
+            "    expect(celsiusToFahrenheit(0)).toBe(32);\n"
+            "  });\n"
+            "});\n"
+            "```"
+        )
+        detector = UncertaintyDetector()
+        signals = detector.check_self_contradiction(output)
+        assert len(signals) == 0
+
+    def test_js_error_handling_with_catch_no_signal(self):
+        """JS catch blocks should satisfy error handling claims."""
+        output = (
+            "Error handling is implemented.\n\n"
+            "```javascript\n"
+            "try {\n"
+            "  doThing();\n"
+            "} catch (e) {\n"
+            "  handleError(e);\n"
+            "}\n"
+            "```"
+        )
+        detector = UncertaintyDetector()
+        signals = detector.check_self_contradiction(output)
+        assert len(signals) == 0
+
 
 # ============================================================================
 # UncertaintyDetector — check_all

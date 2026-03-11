@@ -318,11 +318,17 @@ class UncertaintyDetector:
         signals: list[UncertaintySignal] = []
 
         # Pattern: "error handling is implemented" or similar in prose
+        # Each tuple: (claim regex, label, list of code indicators — ANY match = ok)
         claim_patterns = [
-            (r"error handling is (?:implemented|included|present)", "error handling", ["try:", "except"]),
-            (r"validation is (?:implemented|included|handled)", "validation", ["if "]),
-            (r"(?:all )?edge cases (?:are |have been )?(?:handled|covered)", "edge case handling", ["if "]),
-            (r"tests? (?:are |have been )?(?:written|implemented|added)", "test implementation", ["def test_"]),
+            (r"error handling is (?:implemented|included|present)", "error handling",
+             ["try:", "except", "catch", ".catch(", "try {", "rescue"]),
+            (r"validation is (?:implemented|included|handled)", "validation",
+             ["if ", "throw ", "raise ", "assert"]),
+            (r"(?:all )?edge cases (?:are |have been )?(?:handled|covered)", "edge case handling",
+             ["if ", "throw ", "raise ", "assert", "expect("]),
+            (r"tests? (?:are |have been )?(?:written|implemented|added)", "test implementation",
+             ["def test_", "it(", "it (", "test(", "test (", "describe(", "describe (",
+              "@Test", "#[test]", "func Test"]),
         ]
 
         for pattern, claim_name, code_indicators in claim_patterns:
@@ -341,7 +347,7 @@ class UncertaintyDetector:
                     except SyntaxError:
                         pass
 
-                indicators_present = all(ind in code_text for ind in code_indicators)
+                indicators_present = any(ind in code_text for ind in code_indicators)
                 if code_text and not indicators_present:
                     signals.append(UncertaintySignal(
                         id=_sig_id(),
