@@ -4,11 +4,12 @@ Depth-first tree traversal, node execution dispatch, signal routing,
 parent completion propagation. All state transitions happen here.
 
 Depends on: schema, detector/checks (via gates_runner), runner/context,
-             runner/gates_runner, runner/correction.
+             runner/gates_runner, runner/correction, session/logger.
 """
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, UTC
 from typing import Protocol
 
@@ -135,6 +136,7 @@ class Runner:
         notifier: Notifier | None = None,
         state_manager: StateManager | None = None,
         schema_registry: SchemaRegistry | None = None,
+        logger: object | None = None,
         # Legacy aliases — mapped to detector/uncertainty_detector
         drift_detector: DriftDetector | None = None,
     ) -> None:
@@ -153,6 +155,7 @@ class Runner:
         self.uncertainty_detector = uncertainty_detector
         self.notifier = notifier
         self.state_manager = state_manager
+        self.logger = logger
 
         # CorrectionEngine: build from available components
         self.correction_engine = correction_engine or CorrectionEngine(
@@ -168,13 +171,36 @@ class Runner:
         Raises HumanReviewRequired if an abort-level signal fires.
         Raises StuckSession if no nodes are executable but tree isn't complete.
         """
-        while not self.tree.is_complete():
-            node = self.tree.next_executable()
-            if node is None:
-                raise StuckSession("No executable nodes, tree not complete")
-            self._execute_node(node)
-            if self.state_manager:
-                self.state_manager.save(self.tree)
+        session_start = time.monotonic()
+        if self.logger:
+            self.logger.session_started(self.tree.session_id, "")
+
+        try:
+            while not self.tree.is_complete():
+                node = self.tree.next_executable()
+                if node is None:
+                    raise StuckSession("No executable nodes, tree not complete")
+                self._execute_node(node)
+                if self.state_manager:
+                    self.state_manager.save(self.tree)
+        except HumanReviewRequired:
+            if self.logger:
+                signal_ids = []
+                self.logger.session_failed(
+                    self.tree.session_id, "human review required", signal_ids
+                )
+            raise
+        except StuckSession:
+            if self.logger:
+                self.logger.session_failed(
+                    self.tree.session_id, "stuck session", []
+                )
+            raise
+
+        if self.logger:
+            duration_ms = int((time.monotonic() - session_start) * 1000)
+            self.logger.session_complete(self.tree.session_id, duration_ms)
+
         return self.tree
 
     # -------------------------------------------------------------------
@@ -184,6 +210,10 @@ class Runner:
     def _execute_node(self, node: TaskNode) -> None:
         node.status = NodeStatus.IN_PROGRESS
         node.started_at = datetime.now(UTC)
+
+        if self.logger:
+            self.logger.register_node(self.tree, node)
+            self.logger.node_started(node)
 
         if node.is_composition:
             self._decompose(node)
@@ -214,9 +244,22 @@ class Runner:
         # All steps done — run gates
         self.gate_runner.run_all(node)
 
+        # Log gate results
+        if self.logger:
+            for gr in node.gate_results:
+                if gr.passed:
+                    self.logger.gate_passed(node, gr.gate, gr.evidence)
+                else:
+                    self.logger.gate_failed(node, gr.gate, gr.evidence)
+
         if node.all_gates_passed:
             node.status = NodeStatus.COMPLETE
             node.completed_at = datetime.now(UTC)
+            if self.logger:
+                duration_ms = 0
+                if node.started_at:
+                    duration_ms = int((node.completed_at - node.started_at).total_seconds() * 1000)
+                self.logger.node_complete(node, duration_ms)
             self._check_parent_completion(node)
         else:
             self._handle_gate_failures(node)
@@ -227,6 +270,11 @@ class Runner:
 
     def _execute_step(self, node: TaskNode, step: StepRecord) -> None:
         step.status = StepStatus.ACTIVE
+        step_start = time.monotonic()
+        attempt = step.retry_count + 1
+
+        if self.logger:
+            self.logger.step_started(node, step)
 
         # Build prompt
         prompt = self.context_builder.build(
@@ -236,16 +284,36 @@ class Runner:
             correction_context=step.correction_context,
         )
 
+        if self.logger:
+            self.logger.log_prompt(node, step, attempt, prompt)
+            self.logger.llm_call_started(node, step, "step_execution")
+
+        llm_start = time.monotonic()
         output = self.llm_client.call(prompt)
+        llm_ms = int((time.monotonic() - llm_start) * 1000)
+
+        if self.logger:
+            self.logger.llm_call_complete(
+                node, step, "step_execution", duration_ms=llm_ms,
+            )
 
         # Drift detection
+        signals_for_content: list = []
         if self.detector:
             drift_signals = self.detector.check_all(node, step, output)
+            if drift_signals and self.logger:
+                for sig in drift_signals:
+                    self.logger.drift_detected(node, step, sig)
+                signals_for_content.extend(drift_signals)
             output = self._route_drift_signals(node, step, drift_signals, output)
 
         # Uncertainty detection
         if self.uncertainty_detector and self.notifier:
             uncertain_signals = self.uncertainty_detector.check_all(node, step, output)
+            if uncertain_signals and self.logger:
+                for sig in uncertain_signals:
+                    self.logger.uncertainty_detected(node, step, sig)
+                signals_for_content.extend(uncertain_signals)
             output = self._route_uncertainty_signals(
                 node, step, uncertain_signals, output
             )
@@ -254,6 +322,18 @@ class Runner:
         step.output = output
         step.status = StepStatus.COMPLETE
         step.completed_at = datetime.now(UTC)
+        step_ms = int((time.monotonic() - step_start) * 1000)
+
+        if self.logger:
+            outcome = "complete"
+            if signals_for_content:
+                outcome = "signals_detected"
+            self.logger.log_response(
+                node, step, attempt, output,
+                signals=signals_for_content or None,
+                outcome=outcome, duration_ms=step_ms,
+            )
+            self.logger.step_complete(node, step, duration_ms=step_ms)
 
     # -------------------------------------------------------------------
     # Signal routing
@@ -325,6 +405,10 @@ class Runner:
         signals: list[DriftSignal],
     ) -> str:
         """Delegate block-level correction to CorrectionEngine."""
+        if self.logger:
+            self.logger.node_blocked(node, signals)
+            self.logger.step_retrying(node, step)
+
         corrected_output, remaining = self.correction_engine.correct_step(
             node=node,
             step=step,
@@ -335,6 +419,10 @@ class Runner:
         if remaining:
             # Correction failed — escalate
             node.status = NodeStatus.FAILED
+            if self.logger:
+                self.logger.node_failed(
+                    node, "correction failed", [s.id for s in remaining]
+                )
             raise HumanReviewRequired(node, remaining)
 
         node.status = NodeStatus.IN_PROGRESS
@@ -352,6 +440,10 @@ class Runner:
         abort_gates = [g for g in failing if g.gate.on_failure == "abort"]
         if abort_gates:
             node.status = NodeStatus.FAILED
+            if self.logger:
+                self.logger.node_failed(
+                    node, "abort gate failure", []
+                )
             raise HumanReviewRequired(node, abort_gates)
 
         # Block-level gate failures — retry the node
@@ -360,6 +452,10 @@ class Runner:
 
         if node.retry_count > node.max_retries:
             node.status = NodeStatus.FAILED
+            if self.logger:
+                self.logger.node_failed(
+                    node, "max gate retries exceeded", []
+                )
             raise HumanReviewRequired(node, failing)
 
         # Use CorrectionEngine for correction context
@@ -396,6 +492,11 @@ class Runner:
         if parent.all_gates_passed:
             parent.status = NodeStatus.COMPLETE
             parent.completed_at = datetime.now(UTC)
+            if self.logger:
+                duration_ms = 0
+                if parent.started_at:
+                    duration_ms = int((parent.completed_at - parent.started_at).total_seconds() * 1000)
+                self.logger.node_complete(parent, duration_ms)
             self._check_parent_completion(parent)  # propagate up
 
     # -------------------------------------------------------------------

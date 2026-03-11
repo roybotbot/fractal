@@ -21,6 +21,7 @@ from superpowers_runner.notify.notifier import Notifier
 from superpowers_runner.planner.planner import Planner
 from superpowers_runner.runner.runner import HumanReviewRequired, Runner, StuckSession
 from superpowers_runner.schema.signals import Resolution, UncertaintySignal
+from superpowers_runner.session.logger import ExecutionLogger
 from superpowers_runner.session.state import StateManager
 
 
@@ -126,6 +127,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     # Step 2: Execute
     print("Executing...")
+    logger = ExecutionLogger(session_dir=session_dir, session_id=tree.session_id)
     runner = Runner(
         tree=tree,
         llm_client=llm_client,
@@ -133,6 +135,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         uncertainty_detector=uncertainty_detector,
         notifier=notifier,
         state_manager=state_mgr,
+        logger=logger,
     )
 
     try:
@@ -164,6 +167,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         print("\nInterrupted. Session saved.")
         state_mgr.save(tree)
         sys.exit(130)
+    finally:
+        logger.close()
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -209,6 +214,7 @@ def cmd_resume(args: argparse.Namespace) -> None:
     uncertainty_detector = UncertaintyDetector()
     notifier = Notifier(human_input=_terminal_human_input)
 
+    logger = ExecutionLogger(session_dir=session_dir, session_id=session_id)
     runner = Runner(
         tree=tree,
         llm_client=llm_client,
@@ -216,6 +222,7 @@ def cmd_resume(args: argparse.Namespace) -> None:
         uncertainty_detector=uncertainty_detector,
         notifier=notifier,
         state_manager=state_mgr,
+        logger=logger,
     )
 
     try:
@@ -235,6 +242,8 @@ def cmd_resume(args: argparse.Namespace) -> None:
         print("\nInterrupted. Session saved.")
         state_mgr.save(tree)
         sys.exit(130)
+    finally:
+        logger.close()
 
 
 def cmd_login(args: argparse.Namespace) -> None:
