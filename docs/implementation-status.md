@@ -16,6 +16,48 @@ All core data structures are defined and the design is stable.
 
 ---
 
+### Detector layer — complete
+
+`detector/checks.py` — 15 gate check implementations with `CHECKS` registry and `run_check()` dispatcher.
+
+`detector/drift.py` — `DriftDetector` with 5 check methods: `check_scope`, `check_phase`, `check_instruction_adherence`, `check_schema_consistency`, `check_completion_honesty`. Optional LLM judge for instruction adherence.
+
+`detector/uncertainty.py` — `UncertaintyDetector` with 6 check methods: `check_ambiguous_scope`, `check_ambiguous_phase`, `check_partial_adherence`, `check_schema_near_miss`, `check_token_velocity`, `check_self_contradiction`.
+
+### Runner layer — complete
+
+`runner/runner.py` — `Runner` class with depth-first traversal, step execution, drift/uncertainty signal routing, gate failure handling, parent completion propagation. Protocol interfaces for detector, notifier, state manager.
+
+`runner/context.py` — `ContextBuilder` + `SchemaRegistry`. System block assembly, node summary injection, global schema registry, step prompt injection, correction context prepend, context window budget.
+
+`runner/gates_runner.py` — `GateRunner`. Dispatch to `checks.py` implementations by `check_type` string, collect results, determine pass/fail per gate.
+
+### Planner layer — complete
+
+`planner/classifier.py` — Constrained LLM classification with retry logic and enum validation. `ClassificationFailure` on exhausted retries.
+
+`planner/decomposer.py` — Composition node decomposition with JSON parsing, type validation, dependency resolution, circular dependency detection.
+
+`planner/planner.py` — Orchestrates classify → root creation → decompose → return `TaskTree`.
+
+### Notification layer — complete
+
+`notify/notifier.py` — `Notifier` with `UncertaintyBuffer`, interrupt vs batch routing, batch flush policy, timeout handler, auto-resolution safety valve.
+
+`notify/display.py` — Terminal display for uncertainty and drift signals. Multi-signal batched display, A/B options, countdown timer.
+
+### Session layer — complete
+
+`session/state.py` — `StateManager` with atomic save/load for `TaskTree` → JSON round-trip. Session listing, metadata tracking.
+
+`session/log.py` — `DriftLog`. Append-only JSONL writer for drift and uncertainty signal resolutions.
+
+### CLI — complete
+
+`__main__.py` — Entry point with `run`, `list`, `resume` commands. Stub LLM client for dry-run mode. Interactive terminal handler for uncertainty signals.
+
+---
+
 ## What needs to be built
 
 ### Step templates — missing types
@@ -27,92 +69,9 @@ Priority order: `pipeline` and `router` (composition types, needed for the runne
 
 ---
 
-### Detector layer — not started
+### runner/correction.py — not started
 
-`detector/drift.py` — five check methods:
-
-```
-check_scope()            — symbol comparison against node spec
-check_phase()            — forbidden artifact detection in step output
-check_instruction_adherence() — LLM judge: did output address sub-prompt?
-check_schema_consistency()   — AST type comparison against global registry
-check_completion_honesty()   — gate result vs completion claim check
-```
-
-`detector/uncertainty.py` — six check methods, each with confidence scoring:
-
-```
-check_ambiguous_scope()     — new symbol that might be a helper
-check_ambiguous_phase()     — code-like content in planning step
-check_partial_adherence()   — oblique sub-prompt response
-check_schema_near_miss()    — structurally compatible, differently named type
-check_token_velocity()      — suspiciously low token count
-check_self_contradiction()  — assertion in prose not supported by code
-```
-
-`detector/checks.py` — gate check implementations:
-
-```
-ast_no_any()               — walk AST for Any annotations
-ast_no_io()                — walk AST for I/O module imports/calls
-ast_has_exception_handling() — verify try/except presence
-ast_no_mutations()         — verify no write operations
-ast_no_shared_mutable_state() — verify test isolation
-run_tests()                — execute test suite, return pass/fail + output
-test_count_minimum()       — count test functions, compare to minimum
-test_covers_exceptions()   — verify exception path tests exist
-test_covers_partial_failure() — verify partial failure integration tests
-file_contains_tests()      — structural check for test file
-has_docstring()            — verify primary class/function has docstring
-has_documented_exceptions() — verify exception annotations in interface
-has_rollback_documentation() — verify rollback behavior documented
-children_have_types()      — verify all children have valid primitive_type
-llm_judge()               — constrained LLM call for semantic checks
-```
-
----
-
-### Runner layer — not started
-
-`runner/runner.py` — main `Runner` class. Depth-first traversal, node execution dispatch, signal routing, parent completion propagation.
-
-`runner/context.py` — `ContextBuilder`. System block assembly, node summary injection, global schema registry injection, step prompt injection, correction context prepend, context window budget management.
-
-`runner/correction.py` — `CorrectionEngine`. Block signal → correction context → retry prompt → re-execution → escalation on second failure.
-
-`runner/gates_runner.py` — `GateRunner`. Dispatch to `checks.py` implementations by `check_type` string, collect results, determine pass/fail per gate.
-
----
-
-### Planner layer — not started
-
-`planner/classifier.py` — constrained classification call. Returns `PrimitiveType` or raises `ClassificationFailure` after 3 retries.
-
-`planner/decomposer.py` — composition node → JSON child list → type-validated `TaskNode` list. Dependency validation.
-
-`planner/planner.py` — orchestrates classify → root creation → decompose → human checkpoint → return `TaskTree`.
-
----
-
-### Notification layer — not started
-
-`notify/notifier.py` — `UncertaintyBuffer`, interrupt vs batch routing, batch flush policy (end of node, 3 signals, 120s), timeout handler, auto-resolution safety valve.
-
-`notify/display.py` — terminal display for human review. Multi-signal batched display, A/B selection, show-more option, countdown timer.
-
----
-
-### Session layer — not started
-
-`session/state.py` — `TaskTree` → JSON serialization/deserialization. Session directory creation, save, load, resume.
-
-`session/log.py` — `DriftLog`. `ResolutionRecord` → JSONL writer. Append-only.
-
----
-
-### CLI — not started
-
-Entry point. Accepts task description. Instantiates planner, runner, notifier. Handles `HumanReviewRequired` exceptions. Displays session summary on completion.
+`CorrectionEngine`. Block signal → correction context → retry prompt → re-execution → escalation on second failure. Currently inline in `runner/runner.py._handle_block()`.
 
 ---
 
