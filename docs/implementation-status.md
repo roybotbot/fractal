@@ -58,20 +58,21 @@ All core data structures are defined and the design is stable.
 
 ---
 
-## What needs to be built
+### Step templates — complete
 
-### Step templates — missing types
+All 21 `PrimitiveType` values now have explicit step templates and gate templates. No type falls through to the generic fallback.
 
-The following `PrimitiveType` values currently fall through to the generic template:
-`config`, `aggregation`, `event_emit`, `event_handler`, `pipeline`, `router`, `cache`, `auth_guard`, `retry_policy`, `observer`, `integration_test`, `contract_test`, `fixture`
+`schema/primitives.py` — 21 step template sets: `data_model`, `transformation`, `mutation`, `interface`, `orchestration`, `query`, `validation`, `unit_test`, `config`, `aggregation`, `event_emit`, `event_handler`, `pipeline`, `router`, `cache`, `auth_guard`, `retry_policy`, `observer`, `integration_test`, `contract_test`, `fixture`.
 
-Priority order: `pipeline` and `router` (composition types, needed for the runner's decompose path), `integration_test` and `fixture` (needed by most feature tasks), the rest.
+`schema/gates.py` — 21 gate template sets with type-specific checks. All composition types (`pipeline`, `router`, `orchestration`) have `children_have_types` gate with `abort` on failure.
+
+### runner/correction.py — complete
+
+`CorrectionEngine` class with: `correct_step()` (block signal → correction → retry → escalate), `build_correction_context()` (signal → correction string), `build_gate_correction()` (gate failures → correction string), `find_responsible_step()` (gate → step mapping heuristic).
 
 ---
 
-### runner/correction.py — not started
-
-`CorrectionEngine`. Block signal → correction context → retry prompt → re-execution → escalation on second failure. Currently inline in `runner/runner.py._handle_block()`.
+## What needs to be built
 
 ---
 

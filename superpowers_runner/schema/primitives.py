@@ -329,6 +329,351 @@ _UNIT_TEST_STEPS = [
     ),
 ]
 
+_CONFIG_STEPS = [
+    StepTemplate(
+        name="enumerate_parameters",
+        prompt_template="For node '{node.name}': enumerate all configuration parameters with types, defaults, and whether required.",
+        expected_artifacts=["parameter_list"],
+        forbidden_artifacts=["code", "class_definition"],
+    ),
+    StepTemplate(
+        name="define_types_and_defaults",
+        prompt_template="For node '{node.name}': define the exact type for each parameter and its default value.",
+        expected_artifacts=["typed_parameter_list"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_startup_validation",
+        prompt_template="For node '{node.name}': define validation rules to run at startup. Invalid config must fail loudly.",
+        expected_artifacts=["validation_rules"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement_with_validation",
+        prompt_template="For node '{node.name}': implement the config class with startup validation for all parameters.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_AGGREGATION_STEPS = [
+    StepTemplate(
+        name="define_input_collection",
+        prompt_template="For node '{node.name}': define the input collection type and element type.",
+        expected_artifacts=["input_schema"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_output_schema",
+        prompt_template="For node '{node.name}': define the output type produced by the aggregation.",
+        expected_artifacts=["output_schema"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="enumerate_edge_cases",
+        prompt_template="For node '{node.name}': list edge cases including empty input, single element, and large collections.",
+        expected_artifacts=["edge_case_list"],
+        forbidden_artifacts=["test_code", "implementation_code"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write failing tests covering all edge cases.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement_minimal",
+        prompt_template="For node '{node.name}': implement the minimal aggregation that passes tests.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_EVENT_EMIT_STEPS = [
+    StepTemplate(
+        name="define_event_schema",
+        prompt_template="For node '{node.name}': define the event payload schema with all fields and types.",
+        expected_artifacts=["event_schema"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_delivery_semantics",
+        prompt_template="For node '{node.name}': specify delivery guarantees (fire-and-forget or at-least-once).",
+        expected_artifacts=["delivery_semantics"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write failing tests verifying the event is emitted with correct payload.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement the event emitter.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_EVENT_HANDLER_STEPS = [
+    StepTemplate(
+        name="define_event_schema",
+        prompt_template="For node '{node.name}': define the incoming event schema this handler processes.",
+        expected_artifacts=["event_schema"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_idempotency_strategy",
+        prompt_template="For node '{node.name}': define idempotency handling. Events may be delivered more than once.",
+        expected_artifacts=["idempotency_strategy"],
+    ),
+    StepTemplate(
+        name="enumerate_failure_modes",
+        prompt_template="For node '{node.name}': list every failure mode for this event handler.",
+        expected_artifacts=["failure_modes"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write failing tests including duplicate delivery and error cases.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement with idempotency handling and error recovery.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_PIPELINE_STEPS = [
+    StepTemplate(
+        name="enumerate_stages",
+        prompt_template="For node '{node.name}': list all pipeline stages in order with input/output types.",
+        expected_artifacts=["stage_list"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_type_chain",
+        prompt_template="For node '{node.name}': verify type compatibility — each stage's output must match the next stage's input.",
+        expected_artifacts=["type_chain"],
+    ),
+    StepTemplate(
+        name="define_error_propagation",
+        prompt_template="For node '{node.name}': define what happens when a stage fails. Does the pipeline stop or skip?",
+        expected_artifacts=["error_propagation_rules"],
+    ),
+    StepTemplate(
+        name="write_integration_tests",
+        prompt_template="For node '{node.name}': write integration tests for the full pipeline including stage failure.",
+        expected_artifacts=["integration_tests"],
+    ),
+]
+
+_ROUTER_STEPS = [
+    StepTemplate(
+        name="enumerate_routes",
+        prompt_template="For node '{node.name}': list all routes with their conditions and target handlers.",
+        expected_artifacts=["route_list"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_default_route",
+        prompt_template="For node '{node.name}': define the default/fallback route when no condition matches.",
+        expected_artifacts=["default_route"],
+    ),
+    StepTemplate(
+        name="define_routing_logic",
+        prompt_template="For node '{node.name}': define the routing logic. The router decides only where to send, not what to do.",
+        expected_artifacts=["routing_rules"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="write_integration_tests",
+        prompt_template="For node '{node.name}': write tests for each route including the default/fallback case.",
+        expected_artifacts=["integration_tests"],
+    ),
+]
+
+_CACHE_STEPS = [
+    StepTemplate(
+        name="define_wrapped_node",
+        prompt_template="For node '{node.name}': identify the underlying node this cache wraps.",
+        expected_artifacts=["wrapped_interface"],
+    ),
+    StepTemplate(
+        name="define_cache_key",
+        prompt_template="For node '{node.name}': define the cache key derivation from the input parameters.",
+        expected_artifacts=["cache_key_strategy"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_eviction_policy",
+        prompt_template="For node '{node.name}': define TTL, max size, and eviction strategy.",
+        expected_artifacts=["eviction_policy"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write tests for cache hit, miss, and eviction.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement the cache wrapper.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_AUTH_GUARD_STEPS = [
+    StepTemplate(
+        name="define_protected_node",
+        prompt_template="For node '{node.name}': identify the node this guard protects.",
+        expected_artifacts=["protected_interface"],
+    ),
+    StepTemplate(
+        name="define_permission_model",
+        prompt_template="For node '{node.name}': define the identity and permission requirements.",
+        expected_artifacts=["permission_model"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_rejection_behavior",
+        prompt_template="For node '{node.name}': define what happens on auth failure (error type, response).",
+        expected_artifacts=["rejection_behavior"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write tests for allowed, denied, and missing-auth cases.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement the auth guard.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_RETRY_POLICY_STEPS = [
+    StepTemplate(
+        name="define_wrapped_node",
+        prompt_template="For node '{node.name}': identify the node this retry policy wraps.",
+        expected_artifacts=["wrapped_interface"],
+    ),
+    StepTemplate(
+        name="define_retry_parameters",
+        prompt_template="For node '{node.name}': define max attempts, backoff strategy, and which exceptions are retryable.",
+        expected_artifacts=["retry_parameters"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="define_exhaustion_behavior",
+        prompt_template="For node '{node.name}': define what happens when retries are exhausted.",
+        expected_artifacts=["exhaustion_behavior"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write tests for success, retry-then-succeed, and retry-exhaustion.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement the retry wrapper.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_OBSERVER_STEPS = [
+    StepTemplate(
+        name="define_observed_node",
+        prompt_template="For node '{node.name}': identify the node being observed.",
+        expected_artifacts=["observed_interface"],
+    ),
+    StepTemplate(
+        name="define_observation_points",
+        prompt_template="For node '{node.name}': define what is observed (timing, inputs, outputs, errors).",
+        expected_artifacts=["observation_points"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="write_failing_tests",
+        prompt_template="For node '{node.name}': write tests verifying observations are recorded without altering behavior.",
+        expected_artifacts=["test_code"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement the observer. Must not modify the observed node's behavior.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
+_INTEGRATION_TEST_STEPS = [
+    StepTemplate(
+        name="identify_components",
+        prompt_template="For node '{node.name}': identify the components being tested together.",
+        expected_artifacts=["component_list"],
+    ),
+    StepTemplate(
+        name="enumerate_scenarios",
+        prompt_template="For node '{node.name}': list test scenarios: happy path and at least one failure path.",
+        expected_artifacts=["scenario_list"],
+        forbidden_artifacts=["test_code"],
+    ),
+    StepTemplate(
+        name="write_fixture",
+        prompt_template="For node '{node.name}': write test fixtures and setup code.",
+        expected_artifacts=["fixture_code"],
+    ),
+    StepTemplate(
+        name="implement_cases",
+        prompt_template="For node '{node.name}': implement the integration test cases using real interactions, not mocks.",
+        expected_artifacts=["test_code"],
+    ),
+]
+
+_CONTRACT_TEST_STEPS = [
+    StepTemplate(
+        name="identify_interface",
+        prompt_template="For node '{node.name}': identify the interface contract being verified.",
+        expected_artifacts=["interface_reference"],
+    ),
+    StepTemplate(
+        name="enumerate_contract_points",
+        prompt_template="For node '{node.name}': list every contract point (method, precondition, postcondition, error).",
+        expected_artifacts=["contract_point_list"],
+        forbidden_artifacts=["test_code"],
+    ),
+    StepTemplate(
+        name="write_fixture",
+        prompt_template="For node '{node.name}': write fixture that accepts any correct implementation.",
+        expected_artifacts=["fixture_code"],
+    ),
+    StepTemplate(
+        name="implement_cases",
+        prompt_template="For node '{node.name}': implement contract tests that are implementation-agnostic.",
+        expected_artifacts=["test_code"],
+    ),
+]
+
+_FIXTURE_STEPS = [
+    StepTemplate(
+        name="identify_target_tests",
+        prompt_template="For node '{node.name}': identify the tests this fixture supports.",
+        expected_artifacts=["target_description"],
+    ),
+    StepTemplate(
+        name="define_data_shape",
+        prompt_template="For node '{node.name}': define the shape and constraints of the test data.",
+        expected_artifacts=["data_shape"],
+        forbidden_artifacts=["implementation_code"],
+    ),
+    StepTemplate(
+        name="implement",
+        prompt_template="For node '{node.name}': implement the fixture factory. No hardcoded magic values.",
+        expected_artifacts=["implementation_code"],
+    ),
+]
+
 _GENERIC_STEPS = [
     StepTemplate(
         name="define_inputs_outputs",
@@ -358,6 +703,19 @@ STEP_TEMPLATES: dict[PrimitiveType, list[StepTemplate]] = {
     PrimitiveType.QUERY: _QUERY_STEPS,
     PrimitiveType.VALIDATION: _VALIDATION_STEPS,
     PrimitiveType.UNIT_TEST: _UNIT_TEST_STEPS,
+    PrimitiveType.CONFIG: _CONFIG_STEPS,
+    PrimitiveType.AGGREGATION: _AGGREGATION_STEPS,
+    PrimitiveType.EVENT_EMIT: _EVENT_EMIT_STEPS,
+    PrimitiveType.EVENT_HANDLER: _EVENT_HANDLER_STEPS,
+    PrimitiveType.PIPELINE: _PIPELINE_STEPS,
+    PrimitiveType.ROUTER: _ROUTER_STEPS,
+    PrimitiveType.CACHE: _CACHE_STEPS,
+    PrimitiveType.AUTH_GUARD: _AUTH_GUARD_STEPS,
+    PrimitiveType.RETRY_POLICY: _RETRY_POLICY_STEPS,
+    PrimitiveType.OBSERVER: _OBSERVER_STEPS,
+    PrimitiveType.INTEGRATION_TEST: _INTEGRATION_TEST_STEPS,
+    PrimitiveType.CONTRACT_TEST: _CONTRACT_TEST_STEPS,
+    PrimitiveType.FIXTURE: _FIXTURE_STEPS,
 }
 
 

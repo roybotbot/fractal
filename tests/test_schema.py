@@ -74,12 +74,11 @@ class TestGateTemplates:
             gates = get_gates(ptype)
             assert len(gates) > 0
 
-    def test_generic_fallback(self):
-        # Types not in GATE_TEMPLATES get the generic
+    def test_config_has_explicit_gates(self):
+        # All types now have explicit gates (no generic fallback needed)
         gates = get_gates(PrimitiveType.CONFIG)
         assert len(gates) >= 2
         check_types = [g.check_type for g in gates]
-        assert "run_tests" in check_types
         assert "ast_no_any" in check_types
 
     def test_orchestration_has_abort_gate(self):
