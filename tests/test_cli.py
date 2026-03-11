@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -94,7 +95,9 @@ class TestCLIResume:
 
 
 class TestCLIRunNoLLM:
-    def test_run_without_dry_run_fails(self, tmp_path):
+    def test_run_without_auth_shows_error(self, tmp_path):
+        # Clear ANTHROPIC_API_KEY to force auth failure
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
         result = subprocess.run(
             [
                 sys.executable, "-m", "superpowers_runner",
@@ -104,6 +107,7 @@ class TestCLIRunNoLLM:
             capture_output=True,
             text=True,
             cwd="/Users/roy/Projects/fractal",
+            env=env,
         )
         assert result.returncode == 1
-        assert "dry-run" in result.stdout.lower()
+        assert "anthropic" in result.stdout.lower() or "api key" in result.stdout.lower()
