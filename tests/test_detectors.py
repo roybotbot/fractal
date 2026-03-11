@@ -354,6 +354,31 @@ class TestAmbiguousPhase:
         signals = detector.check_ambiguous_phase(step, output)
         assert len(signals) == 0
 
+    def test_plain_text_in_fence_no_signal(self):
+        """Fenced block with plain English (no code syntax) should not trigger."""
+        step = _make_step(name="define_input_schema", forbidden=["code"])
+        output = "Schema:\n\n```\nInput: celsius (numeric)\n```\n"
+        detector = UncertaintyDetector()
+        signals = detector.check_ambiguous_phase(step, output)
+        assert len(signals) == 0
+
+    def test_short_label_no_signal(self):
+        """A 1-2 line fenced block without code indicators should not trigger."""
+        step = _make_step(name="enumerate_fields", forbidden=["code"])
+        output = "```\nname: string\nemail: string\n```"
+        detector = UncertaintyDetector()
+        signals = detector.check_ambiguous_phase(step, output)
+        assert len(signals) == 0
+
+    def test_real_function_in_fence_triggers(self):
+        """A fenced block with def/class keywords should trigger."""
+        step = _make_step(name="enumerate_fields", forbidden=["code"])
+        output = "```python\ndef convert(c):\n    return c * 9/5 + 32\n```"
+        detector = UncertaintyDetector()
+        signals = detector.check_ambiguous_phase(step, output)
+        assert len(signals) == 1
+        assert signals[0].uncertainty_type == UncertaintyType.AMBIGUOUS_PHASE
+
 
 # ============================================================================
 # UncertaintyDetector — partial adherence

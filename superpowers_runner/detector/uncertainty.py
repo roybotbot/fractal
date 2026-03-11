@@ -99,29 +99,50 @@ class UncertaintyDetector:
         if "code" not in " ".join(forbidden).lower() and "implementation" not in " ".join(forbidden).lower():
             return signals
 
-        # Check for code block markers that might be pseudocode
-        code_block_pattern = re.compile(r"```\w*\n.*?\n```", re.DOTALL)
+        # Check for code block markers that contain actual code syntax
+        code_block_pattern = re.compile(r"```(\w*)\n(.*?)\n```", re.DOTALL)
         matches = code_block_pattern.findall(output)
 
-        for match in matches:
-            # If it's short and in a planning step, might be pseudocode
-            if len(match) < 300:
-                signals.append(UncertaintySignal(
-                    id=_sig_id(),
-                    uncertainty_type=UncertaintyType.AMBIGUOUS_PHASE,
-                    node_id="",
-                    step_name=step.template.name,
-                    confidence=0.35,
-                    evidence=f"Code block found during '{step.template.name}' planning step.",
-                    output_excerpt=match[:200],
-                    question=(
-                        f"Code block found during `{step.template.name}` step. "
-                        f"Is this pseudocode for illustration (A) or premature implementation (B)?"
-                    ),
-                    option_a="Pseudocode for illustration",
-                    option_b="Premature implementation — remove",
-                    default_resolution=Resolution.PROCEED,
-                ))
+        # Patterns that indicate real code vs plain-text/pseudocode
+        _CODE_INDICATORS = re.compile(
+            r"(?:"
+            r"(?:def|class|function|const|let|var|import|from|return)\s"  # keywords
+            r"|[{};]"                                  # braces/semicolons
+            r"|\b\w+\(.*\)"                            # function calls
+            r"|=>"                                      # arrow functions
+            r"|\bif\s*\(.*\)\s*[:{]"                   # if-conditions
+            r")"
+        )
+
+        for lang, content in matches:
+            # Skip if the language tag is explicitly non-code
+            if lang.lower() in ("text", "txt", "markdown", "md", ""):
+                # No language tag or plain text — only flag if content looks like code
+                if not _CODE_INDICATORS.search(content):
+                    continue
+
+            # Skip very short blocks (single-line labels, schemas, etc.)
+            content_lines = [l for l in content.strip().splitlines() if l.strip()]
+            if len(content_lines) < 3 and not _CODE_INDICATORS.search(content):
+                continue
+
+            block_preview = content[:200].strip()
+            signals.append(UncertaintySignal(
+                id=_sig_id(),
+                uncertainty_type=UncertaintyType.AMBIGUOUS_PHASE,
+                node_id="",
+                step_name=step.template.name,
+                confidence=0.50,
+                evidence=f"Code block with apparent implementation found during '{step.template.name}' planning step.",
+                output_excerpt=block_preview,
+                question=(
+                    f"This looks like real code in a planning step (`{step.template.name}`). "
+                    f"Is it pseudocode for illustration (A) or premature implementation (B)?"
+                ),
+                option_a="Pseudocode / illustration — proceed",
+                option_b="Premature implementation — retry step",
+                default_resolution=Resolution.PROCEED,
+            ))
 
         return signals
 
