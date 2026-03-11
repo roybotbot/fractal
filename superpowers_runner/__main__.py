@@ -349,7 +349,7 @@ def main() -> None:
     run_parser.add_argument("task", help="Task description")
     run_parser.add_argument("--dry-run", action="store_true", help="Use stub LLM client")
     run_parser.add_argument("--api-key", help="Anthropic API key (overrides env/OAuth)")
-    run_parser.add_argument("--model", default=None, help="Model to use (default: claude-sonnet-4-6-20250311)")
+    run_parser.add_argument("--model", default=None, help="Model to use (default: claude-sonnet-4-20250514)")
     run_parser.set_defaults(func=cmd_run)
 
     # list
