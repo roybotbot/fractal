@@ -458,13 +458,13 @@ class TestLLMCallEvents:
         logger = ExecutionLogger(tmp_path, "s1")
         logger.register_node(tree, child)
         step = child.steps[0]
-        logger.llm_call_started(child, step, "step_execution", model="claude-sonnet-4-20250514")
+        logger.llm_call_started(child, step, "step_execution", model="claude-sonnet-4-6-20250311")
         logger.close()
 
         e = logger.read_execution_log()[0]
         assert e["event"] == "llm_call_started"
         assert e["call_purpose"] == "step_execution"
-        assert e["model"] == "claude-sonnet-4-20250514"
+        assert e["model"] == "claude-sonnet-4-6-20250311"
 
     def test_llm_call_complete(self, tmp_path):
         tree, _, child = _make_tree_with_child()
@@ -473,7 +473,7 @@ class TestLLMCallEvents:
         step = child.steps[0]
         logger.llm_call_complete(
             child, step, "step_execution",
-            tokens_in=800, tokens_out=300, duration_ms=2500, model="claude-sonnet-4-20250514",
+            tokens_in=800, tokens_out=300, duration_ms=2500, model="claude-sonnet-4-6-20250311",
         )
         logger.close()
 
@@ -666,7 +666,7 @@ class TestRoundTrip:
         logger.node_started(root)
         logger.node_started(child)
         logger.step_started(child, step)
-        logger.llm_call_started(child, step, "step_execution", model="claude-sonnet-4-20250514")
+        logger.llm_call_started(child, step, "step_execution", model="claude-sonnet-4-6-20250311")
         logger.llm_call_complete(child, step, "step_execution", tokens_in=500, tokens_out=200, duration_ms=2000)
         logger.step_complete(child, step, tokens_in=500, tokens_out=200, duration_ms=2100)
         logger.node_complete(child, 2200)
