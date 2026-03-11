@@ -70,20 +70,42 @@ All 21 `PrimitiveType` values now have explicit step templates and gate template
 
 `CorrectionEngine` class with: `correct_step()` (block signal → correction → retry → escalate), `build_correction_context()` (signal → correction string), `build_gate_correction()` (gate failures → correction string), `find_responsible_step()` (gate → step mapping heuristic).
 
+### Client layer — complete
+
+`client/llm.py` — `LLMClient` wrapping Anthropic Python SDK. Auth resolution: explicit key → ANTHROPIC_API_KEY env → stored OAuth token. OAuth tokens use Bearer auth. Supports model override per call.
+
+`client/oauth.py` — PKCE authorization code flow via claude.ai/console.anthropic.com. Token storage in `~/.superpowers_runner/auth.json` with 600 permissions. Auto-refresh on expiry.
+
 ---
 
 ## What needs to be built
 
----
+### Integration gaps
 
-## Next build order
+1. **Runner ↔ CorrectionEngine wiring** — `runner.py._handle_block()` has inline correction logic that duplicates `CorrectionEngine`. Should delegate to the engine instead.
 
-1. `detector/checks.py` — the AST-based checks are straightforward Python and provide immediate value for testing gate logic.
-2. `runner/gates_runner.py` — can be tested against hand-constructed nodes with the schema layer.
-3. `runner/context.py` — testable without live LLM calls.
-4. `runner/runner.py` — the core execution loop. Can be tested with a mock LLM client.
-5. `planner/classifier.py` and `planner/decomposer.py` — requires live LLM calls, test with real API.
-6. `detector/drift.py` and `detector/uncertainty.py` — requires LLM judge for some checks.
-7. `notify/` — relatively self-contained, can be built and tested independently.
-8. `session/` — straightforward serialization, build last.
-9. CLI — wire everything together.
+2. **Runner constructor mismatch** — `runner.py.__init__` takes explicit `gate_runner` and `context_builder` params, but CLI creates Runner without them. Need a factory or default construction.
+
+3. **Planner ↔ LLM integration** — `planner.py` uses raw LLM calls. The classify and decompose prompts work with the stub but haven't been validated against real Claude output parsing.
+
+4. **Context window budget** — `context.py.ContextBuilder` has a `max_context_tokens` param but no actual token counting or truncation. Needs tiktoken or character-based estimation.
+
+5. **pyproject.toml dependencies** — `anthropic` and `httpx` are used but not declared as dependencies.
+
+### Hardening
+
+6. **Error recovery** — Runner catches `HumanReviewRequired` but the CLI doesn't handle it gracefully (just crashes). Need try/except in `cmd_run` and `cmd_resume`.
+
+7. **Drift log integration** — `DriftLog` exists but Runner doesn't write to it. Signals are detected but not persisted.
+
+8. **Step template reattachment on resume** — `StateManager` deserializes steps with placeholder templates (empty prompt). On resume, the runner should reattach real templates from the type registry.
+
+9. **`dependency_ids` type inconsistency** — `nodes.py` uses `list[str]` annotation but `set()` at runtime in some places. Session serialization converts to `set()` on load.
+
+### Nice-to-have
+
+10. **Streaming output** — LLMClient.call() blocks until complete. Could add streaming for long generations.
+
+11. **Token usage tracking** — Track input/output token counts per step for cost estimation.
+
+12. **Calibration tooling** — `drift-log.md` describes calibration queries over JSONL. Could add a `calibrate` CLI command.
