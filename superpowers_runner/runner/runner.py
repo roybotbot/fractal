@@ -4,8 +4,7 @@ Depth-first tree traversal, node execution dispatch, signal routing,
 parent completion propagation. All state transitions happen here.
 
 Depends on: schema, detector/checks (via gates_runner), runner/context,
-             runner/gates_runner. Uses Protocol interfaces for detector,
-             notifier, and state_manager so they can be mocked or swapped.
+             runner/gates_runner, runner/correction.
 """
 
 from __future__ import annotations
@@ -30,11 +29,12 @@ from superpowers_runner.schema.signals import (
     UncertaintySignal,
 )
 from superpowers_runner.runner.context import ContextBuilder, SchemaRegistry
+from superpowers_runner.runner.correction import CorrectionEngine
 from superpowers_runner.runner.gates_runner import GateRunner
 
 
 # ---------------------------------------------------------------------------
-# Protocol interfaces for dependencies not yet built
+# Protocol interfaces for injectable dependencies
 # ---------------------------------------------------------------------------
 
 
@@ -116,29 +116,50 @@ class StuckSession(Exception):
 
 
 class Runner:
-    """Main execution engine. Drives the full tree to completion."""
+    """Main execution engine. Drives the full tree to completion.
+
+    Constructor accepts optional gate_runner, context_builder, and
+    correction_engine. If not provided, defaults are created from
+    the llm_client.
+    """
 
     def __init__(
         self,
         tree: TaskTree,
         llm_client: LLMClient,
-        gate_runner: GateRunner,
-        context_builder: ContextBuilder,
+        gate_runner: GateRunner | None = None,
+        context_builder: ContextBuilder | None = None,
+        correction_engine: CorrectionEngine | None = None,
         detector: DriftDetector | None = None,
         uncertainty_detector: UncertaintyDetector | None = None,
         notifier: Notifier | None = None,
         state_manager: StateManager | None = None,
         schema_registry: SchemaRegistry | None = None,
+        # Legacy aliases — mapped to detector/uncertainty_detector
+        drift_detector: DriftDetector | None = None,
     ) -> None:
         self.tree = tree
         self.llm_client = llm_client
-        self.gate_runner = gate_runner
-        self.context_builder = context_builder
-        self.detector = detector
+
+        # Build defaults for optional components
+        self.gate_runner = gate_runner or GateRunner(llm_client=llm_client)
+        self.context_builder = context_builder or ContextBuilder(
+            session_id=tree.session_id,
+        )
+        self.schema_registry = schema_registry or SchemaRegistry()
+
+        # Detector: accept either param name
+        self.detector = detector or drift_detector
         self.uncertainty_detector = uncertainty_detector
         self.notifier = notifier
         self.state_manager = state_manager
-        self.schema_registry = schema_registry or SchemaRegistry()
+
+        # CorrectionEngine: build from available components
+        self.correction_engine = correction_engine or CorrectionEngine(
+            llm_client=llm_client,
+            context_builder=self.context_builder,
+            detector=self.detector,
+        )
 
     def run(self) -> TaskTree:
         """Execute the full tree to completion.
@@ -179,13 +200,9 @@ class Runner:
             self._execute_step(node, step)
 
         # Children should now be populated on the node
-        # (by the planner/decomposer during the enumerate_children step)
         for child in node.sub_nodes:
             self.tree.register(child)
             child.parent_id = node.id
-
-        # Node stays in DECOMPOSING — it completes when all children complete.
-        # Children will be picked up by next_executable() in the main loop.
 
     def _execute_leaf(self, node: TaskNode) -> None:
         """Execute all steps in order, then run gates."""
@@ -221,12 +238,12 @@ class Runner:
 
         output = self.llm_client.call(prompt)
 
-        # Drift detection (if detector available)
+        # Drift detection
         if self.detector:
             drift_signals = self.detector.check_all(node, step, output)
             output = self._route_drift_signals(node, step, drift_signals, output)
 
-        # Uncertainty detection (if detector available)
+        # Uncertainty detection
         if self.uncertainty_detector and self.notifier:
             uncertain_signals = self.uncertainty_detector.check_all(node, step, output)
             output = self._route_uncertainty_signals(
@@ -257,9 +274,10 @@ class Runner:
             node.status = NodeStatus.FAILED
             raise HumanReviewRequired(node, signals)
 
-        # Block-level signals
-        if any(s.severity == Severity.BLOCK for s in signals):
-            output = self._handle_block(node, step, signals)
+        # Block-level signals — delegate to CorrectionEngine
+        block_signals = [s for s in signals if s.severity == Severity.BLOCK]
+        if block_signals:
+            output = self._handle_block(node, step, block_signals)
 
         return output
 
@@ -297,7 +315,7 @@ class Runner:
         return output
 
     # -------------------------------------------------------------------
-    # Block handling (drift correction)
+    # Block handling — delegates to CorrectionEngine
     # -------------------------------------------------------------------
 
     def _handle_block(
@@ -306,44 +324,24 @@ class Runner:
         step: StepRecord,
         signals: list[DriftSignal],
     ) -> str:
-        """One retry with correction context. Escalates on second failure."""
-        if step.retry_count >= step.max_retries:
-            node.status = NodeStatus.FAILED
-            raise HumanReviewRequired(node, signals)
-
-        step.retry_count += 1
-        step.status = StepStatus.RETRYING
-        node.status = NodeStatus.BLOCKED
-
-        # Build correction from blocking signals
-        correction = "\n".join(
-            s.correction_context()
-            for s in signals
-            if s.severity == Severity.BLOCK
-        )
-        step.correction_context = correction
-
-        # Re-execute with correction prepended
-        prompt = self.context_builder.build(
+        """Delegate block-level correction to CorrectionEngine."""
+        corrected_output, remaining = self.correction_engine.correct_step(
             node=node,
             step=step,
+            signals=signals,
             global_schema=self.schema_registry,
-            correction_context=correction,
         )
-        retry_output = self.llm_client.call(prompt)
 
-        # Re-check retry output
-        if self.detector:
-            retry_signals = self.detector.check_all(node, step, retry_output)
-            if any(s.severity == Severity.BLOCK for s in retry_signals):
-                node.status = NodeStatus.FAILED
-                raise HumanReviewRequired(node, retry_signals)
+        if remaining:
+            # Correction failed — escalate
+            node.status = NodeStatus.FAILED
+            raise HumanReviewRequired(node, remaining)
 
         node.status = NodeStatus.IN_PROGRESS
-        return retry_output
+        return corrected_output
 
     # -------------------------------------------------------------------
-    # Gate failure handling
+    # Gate failure handling — delegates to CorrectionEngine
     # -------------------------------------------------------------------
 
     def _handle_gate_failures(self, node: TaskNode) -> None:
@@ -364,62 +362,17 @@ class Runner:
             node.status = NodeStatus.FAILED
             raise HumanReviewRequired(node, failing)
 
-        correction = self._build_gate_correction(failing)
+        # Use CorrectionEngine for correction context
+        correction = self.correction_engine.build_gate_correction(failing)
 
-        # Find the step responsible and re-execute from there
-        target_step = self._find_step_responsible_for(node, failing[0])
+        # Use CorrectionEngine for step mapping
+        target_step = self.correction_engine.find_responsible_step(node, failing[0])
         target_step.correction_context = correction
         target_step.status = StepStatus.PENDING
         target_step.retry_count += 1
 
         # Re-execute the leaf from the target step onward
         self._execute_leaf(node)
-
-    def _build_gate_correction(self, failing: list[GateResult]) -> str:
-        """Build correction context from failing gate results."""
-        parts = ["GATE FAILURES:"]
-        for g in failing:
-            parts.append(f"  - {g.gate.name}: {g.evidence}")
-        parts.append("CORRECTION REQUIRED: Address each failing gate.")
-        return "\n".join(parts)
-
-    def _find_step_responsible_for(
-        self, node: TaskNode, gate_result: GateResult
-    ) -> StepRecord:
-        """Find the last step that produced the artifact the gate checks.
-
-        Heuristic: the last completed step is the most likely source.
-        For implementation gates, find the step with 'implement' in the name.
-        For test gates, find the step with 'test' in the name.
-        """
-        check_type = gate_result.gate.check_type
-
-        # Test-related gates → find test step
-        if "test" in check_type:
-            for step in reversed(node.steps):
-                if step.status == StepStatus.COMPLETE and "test" in step.template.name:
-                    return step
-
-        # AST/structural gates → find implementation step
-        if check_type.startswith("ast_") or check_type in (
-            "has_docstring", "has_documented_exceptions", "has_rollback_documentation",
-        ):
-            for step in reversed(node.steps):
-                if step.status == StepStatus.COMPLETE and (
-                    "implement" in step.template.name
-                    or "model" in step.template.name
-                    or "document" in step.template.name
-                    or "define_rollback" in step.template.name
-                ):
-                    return step
-
-        # Fallback: last completed step
-        for step in reversed(node.steps):
-            if step.status == StepStatus.COMPLETE:
-                return step
-
-        # Last resort: first step
-        return node.steps[0]
 
     # -------------------------------------------------------------------
     # Parent completion
@@ -460,7 +413,6 @@ class Runner:
         """Apply human resolutions to uncertainty signals."""
         for resolution, signal in zip(resolutions, signals):
             if resolution == Resolution.RETRY:
-                # Re-run the step with the signal evidence as context
                 step.correction_context = (
                     f"A reviewer flagged this: {signal.evidence}\n"
                     f"{signal.question}\n"
@@ -475,8 +427,6 @@ class Runner:
                 output = self.llm_client.call(prompt)
 
             elif resolution == Resolution.ESCALATE:
-                # Treat as block-level drift
                 node.status = NodeStatus.BLOCKED
-                # Handled by caller
 
         return output

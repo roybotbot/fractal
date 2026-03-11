@@ -19,7 +19,7 @@ from superpowers_runner.detector.uncertainty import UncertaintyDetector
 from superpowers_runner.notify.display import format_drift_signals, format_uncertainty_batch
 from superpowers_runner.notify.notifier import Notifier
 from superpowers_runner.planner.planner import Planner
-from superpowers_runner.runner.runner import Runner
+from superpowers_runner.runner.runner import HumanReviewRequired, Runner, StuckSession
 from superpowers_runner.schema.signals import Resolution, UncertaintySignal
 from superpowers_runner.session.state import StateManager
 
@@ -129,7 +129,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     runner = Runner(
         tree=tree,
         llm_client=llm_client,
-        drift_detector=drift_detector,
+        detector=drift_detector,
         uncertainty_detector=uncertainty_detector,
         notifier=notifier,
         state_manager=state_mgr,
@@ -144,6 +144,22 @@ def cmd_run(args: argparse.Namespace) -> None:
             print("✓ Task complete.")
         else:
             print("✗ Task incomplete.")
+    except HumanReviewRequired as e:
+        state_mgr.save(tree)
+        print(f"\n⚠ Human review required: {e}")
+        print(f"  Node: {e.node.name} ({e.node.primitive_type.value})")
+        for s in e.signals:
+            if hasattr(s, "drift_type"):
+                print(f"  Signal: {s.drift_type.value} — {s.evidence}")
+            elif hasattr(s, "gate"):
+                print(f"  Gate: {s.gate.name} — {s.evidence}")
+        print(f"\n  Resume with: python -m superpowers_runner resume {tree.session_id}")
+        sys.exit(2)
+    except StuckSession as e:
+        state_mgr.save(tree)
+        print(f"\n✗ Session stuck: {e}")
+        print(f"  Resume with: python -m superpowers_runner resume {tree.session_id}")
+        sys.exit(3)
     except KeyboardInterrupt:
         print("\nInterrupted. Session saved.")
         state_mgr.save(tree)
@@ -196,7 +212,7 @@ def cmd_resume(args: argparse.Namespace) -> None:
     runner = Runner(
         tree=tree,
         llm_client=llm_client,
-        drift_detector=drift_detector,
+        detector=drift_detector,
         uncertainty_detector=uncertainty_detector,
         notifier=notifier,
         state_manager=state_mgr,
@@ -206,6 +222,15 @@ def cmd_resume(args: argparse.Namespace) -> None:
         result = runner.run()
         print()
         print(result.summary())
+    except HumanReviewRequired as e:
+        state_mgr.save(tree)
+        print(f"\n⚠ Human review required: {e}")
+        print(f"  Resume with: python -m superpowers_runner resume {session_id}")
+        sys.exit(2)
+    except StuckSession as e:
+        state_mgr.save(tree)
+        print(f"\n✗ Session stuck: {e}")
+        sys.exit(3)
     except KeyboardInterrupt:
         print("\nInterrupted. Session saved.")
         state_mgr.save(tree)
