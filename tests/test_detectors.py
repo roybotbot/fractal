@@ -379,6 +379,18 @@ class TestAmbiguousPhase:
         assert len(signals) == 1
         assert signals[0].uncertainty_type == UncertaintyType.AMBIGUOUS_PHASE
 
+    def test_schema_step_allows_type_definitions(self):
+        """Steps that expect schema output should not flag type defs as phase violations."""
+        step = _make_step(
+            name="define_input_schema",
+            forbidden=["implementation_code"],
+            expected=["input_schema"],
+        )
+        output = "```typescript\ntype CelsiusInput = {\n  celsius: number;\n};\n```"
+        detector = UncertaintyDetector()
+        signals = detector.check_ambiguous_phase(step, output)
+        assert len(signals) == 0
+
 
 # ============================================================================
 # UncertaintyDetector — partial adherence

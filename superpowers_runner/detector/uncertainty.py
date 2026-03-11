@@ -99,6 +99,12 @@ class UncertaintyDetector:
         if "code" not in " ".join(forbidden).lower() and "implementation" not in " ".join(forbidden).lower():
             return signals
 
+        # If the step is supposed to produce schemas/types, type definitions
+        # in fences are the expected output — not a phase violation
+        expected = " ".join(step.template.expected_artifacts).lower()
+        if "schema" in expected or "type" in expected or "interface" in expected:
+            return signals
+
         # Check for code block markers that contain actual code syntax
         code_block_pattern = re.compile(r"```(\w*)\n(.*?)\n```", re.DOTALL)
         matches = code_block_pattern.findall(output)
