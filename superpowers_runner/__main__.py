@@ -26,7 +26,12 @@ from superpowers_runner.session.state import StateManager
 
 
 class StubLLMClient:
-    """Stub LLM client for testing / dry-run mode."""
+    """Stub LLM client for dry-run mode.
+
+    Returns plausible responses so the full pipeline actually runs:
+    classifier → type string, root node → JSON, decomposer → children JSON,
+    step execution → placeholder code.
+    """
 
     def call(
         self,
@@ -34,7 +39,39 @@ class StubLLMClient:
         max_tokens: int = 4096,
         system: str | None = None,
     ) -> str:
-        return f"[STUB] Would call LLM with prompt ({len(prompt)} chars)"
+        p = prompt.lower()
+
+        # Classifier prompt — return a type
+        if "classifying a programming task" in p and "type:" in p:
+            return "orchestration"
+
+        # Root node creation — return JSON
+        if "creating the root node" in p:
+            return '{"name": "task_flow", "description": "Orchestrated task flow", "notes": ""}'
+
+        # Decomposer — return children JSON
+        if "decomposing a composition node" in p:
+            return '''{
+  "children": [
+    {"name": "data_schema", "type": "data_model", "description": "Define the data model", "dependencies": []},
+    {"name": "core_logic", "type": "transformation", "description": "Implement core logic", "dependencies": ["data_schema"]},
+    {"name": "persistence", "type": "mutation", "description": "Persist to storage", "dependencies": ["core_logic"]},
+    {"name": "tests", "type": "unit_test", "description": "Test the implementation", "dependencies": ["core_logic"]}
+  ]
+}'''
+
+        # Step execution — return placeholder
+        if "step prompt" in p or "current step" in p:
+            return (
+                "# Step output\n\n"
+                "```python\n"
+                "def placeholder(x: int) -> int:\n"
+                '    """Placeholder implementation."""\n'
+                "    return x\n"
+                "```\n"
+            )
+
+        return f"[STUB] Response for prompt ({len(prompt)} chars)"
 
 
 def _resolve_llm_client(args: argparse.Namespace):

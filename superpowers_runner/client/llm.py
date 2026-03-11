@@ -41,28 +41,43 @@ class LLMClient:
         timeout: float = 120.0,
     ) -> None:
         self._model = model
-        self._api_key = self._resolve_key(api_key)
-        self._client = anthropic.Anthropic(
-            api_key=self._api_key,
-            max_retries=max_retries,
-            timeout=timeout,
-        )
+        self._api_key, self._is_oauth = self._resolve_key(api_key)
 
-    def _resolve_key(self, explicit_key: str | None) -> str:
-        """Resolve API key from explicit, env, or OAuth."""
+        # OAuth tokens use auth_token (Bearer), API keys use api_key (x-api-key)
+        if self._is_oauth:
+            self._client = anthropic.Anthropic(
+                auth_token=self._api_key,
+                max_retries=max_retries,
+                timeout=timeout,
+                default_headers={
+                    "anthropic-beta": "oauth-2025-04-20",
+                },
+            )
+        else:
+            self._client = anthropic.Anthropic(
+                api_key=self._api_key,
+                max_retries=max_retries,
+                timeout=timeout,
+            )
+
+    def _resolve_key(self, explicit_key: str | None) -> tuple[str, bool]:
+        """Resolve API key from explicit, env, or OAuth.
+
+        Returns (key, is_oauth).
+        """
         # 1. Explicit
         if explicit_key:
-            return explicit_key
+            return explicit_key, explicit_key.startswith("sk-ant-oat")
 
         # 2. Environment variable
         env_key = os.environ.get("ANTHROPIC_API_KEY")
         if env_key:
-            return env_key
+            return env_key, env_key.startswith("sk-ant-oat")
 
         # 3. OAuth token
         oauth_token = get_valid_token()
         if oauth_token:
-            return oauth_token
+            return oauth_token, True
 
         raise AuthenticationError(
             "No Anthropic API key found. Either:\n"

@@ -95,9 +95,11 @@ class TestCLIResume:
 
 
 class TestCLIRunNoLLM:
-    def test_run_without_auth_shows_error(self, tmp_path):
-        # Clear ANTHROPIC_API_KEY to force auth failure
+    def test_run_without_auth_shows_error(self, tmp_path, monkeypatch):
+        # Clear ANTHROPIC_API_KEY and block OAuth token discovery
         env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+        # Point auth file to a nonexistent location so OAuth tokens aren't found
+        env["HOME"] = str(tmp_path)
         result = subprocess.run(
             [
                 sys.executable, "-m", "superpowers_runner",
