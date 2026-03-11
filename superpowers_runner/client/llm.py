@@ -19,7 +19,7 @@ from superpowers_runner.client.oauth import get_valid_token, authorize
 
 
 # Default model — can be overridden per call or at client construction
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 class LLMClient:

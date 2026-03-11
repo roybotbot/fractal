@@ -222,7 +222,7 @@ class TestLLMClientCall:
             mock_response.content = [MagicMock(text="ok")]
             mock_anthropic.Anthropic.return_value.messages.create.return_value = mock_response
 
-            client = LLMClient(api_key="sk-ant-test", model="claude-sonnet-4-20250514")
+            client = LLMClient(api_key="sk-ant-test", model="claude-sonnet-4-6")
             client.call("Hello", model="claude-opus-4-6")
 
             create_kwargs = mock_anthropic.Anthropic.return_value.messages.create.call_args.kwargs
@@ -231,7 +231,7 @@ class TestLLMClientCall:
     def test_default_model(self):
         with patch("superpowers_runner.client.llm.anthropic"):
             client = LLMClient(api_key="sk-ant-test")
-            assert client.model == "claude-sonnet-4-20250514"
+            assert client.model == "claude-sonnet-4-6"
 
 
 # ============================================================================
