@@ -288,7 +288,8 @@ class TestDisplayUncertainty:
         assert "generate_token (transformation)" in output
         assert "AMBIGUOUS SCOPE" in output
         assert "0.41" in output
-        assert "A / B / show-more" in output
+        assert "A: Option A" in output
+        assert "B: Option B" in output
 
     def test_format_multiple_signals(self):
         s1 = _make_uncertainty(utype=UncertaintyType.AMBIGUOUS_SCOPE)

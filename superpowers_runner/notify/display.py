@@ -15,6 +15,7 @@ from superpowers_runner.schema.signals import (
 
 
 _SEPARATOR = "━" * 56
+_THIN_SEP = "─" * 56
 
 
 def format_uncertainty_batch(
@@ -26,7 +27,10 @@ def format_uncertainty_batch(
 ) -> str:
     """Format a batch of uncertainty signals for terminal display.
 
-    Follows the spec format from uncertainty-hitl.md.
+    Shows enough context to make an informed A/B decision:
+    - What the step was supposed to produce
+    - What the output actually contains (excerpt)
+    - Clear A and B labels
     """
     lines: list[str] = []
     lines.append(_SEPARATOR)
@@ -45,10 +49,26 @@ def format_uncertainty_batch(
         if signal.step_name:
             lines.append(f"Step: {signal.step_name}")
         lines.append("")
+
+        # Evidence — what was detected
         lines.append(signal.evidence)
+
+        # Output excerpt — what the model actually wrote
+        if signal.output_excerpt:
+            lines.append("")
+            lines.append(f"  Output excerpt:")
+            # Indent and truncate the excerpt
+            excerpt = signal.output_excerpt[:300]
+            for excerpt_line in excerpt.split("\n"):
+                lines.append(f"    {excerpt_line}")
+            if len(signal.output_excerpt) > 300:
+                lines.append(f"    ...")
+
+        # Question with labeled options
         lines.append("")
         lines.append(f"> {signal.question}")
-        lines.append("  A / B / show-more: _")
+        lines.append(f"    A: {signal.option_a}")
+        lines.append(f"    B: {signal.option_b}")
         lines.append(_SEPARATOR)
 
     # Timeout line
@@ -73,6 +93,8 @@ def format_drift_signal(signal: DriftSignal) -> str:
     if signal.node_id:
         lines.append(f"  Node: {signal.node_id}")
     lines.append(f"  {signal.evidence}")
+    if signal.output_excerpt:
+        lines.append(f"  Excerpt: {signal.output_excerpt[:200]}")
     if signal.correction_template:
         lines.append(f"  Correction: {signal.correction_template}")
     return "\n".join(lines)

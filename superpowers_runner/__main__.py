@@ -120,10 +120,7 @@ def _terminal_human_input(
         if answer == "A":
             resolutions.append((Resolution.PROCEED, ""))
         elif answer == "B":
-            if signal.default_resolution == Resolution.ESCALATE:
-                resolutions.append((Resolution.ESCALATE, ""))
-            else:
-                resolutions.append((Resolution.RETRY, ""))
+            resolutions.append((Resolution.RETRY, ""))
         else:
             resolutions.append((signal.default_resolution, ""))
 
