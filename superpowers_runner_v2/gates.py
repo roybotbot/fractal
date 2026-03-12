@@ -19,8 +19,15 @@ def check_no_io(source: str) -> GateResult:
 
     This first pass is intentionally narrow: it looks for a few common imports
     and the built-in `open()` call. That is enough to prove the retry loop.
+
+    Syntax errors are treated as failed gates rather than uncaught exceptions so
+    the runner can surface them consistently in logs and retry behavior.
     """
-    tree = ast.parse(source)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return GateResult(False, f"SyntaxError: {exc}")
+
     violations: list[str] = []
 
     for node in ast.walk(tree):

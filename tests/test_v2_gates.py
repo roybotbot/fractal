@@ -21,6 +21,13 @@ def bad() -> str:
     assert "open" in result.evidence
 
 
+def test_check_no_io_returns_failed_gate_on_syntax_error() -> None:
+    result = check_no_io("def broken(:\n    pass")
+
+    assert result.passed is False
+    assert "SyntaxError" in result.evidence
+
+
 def test_run_pytest_executes_real_test_file(tmp_path: Path) -> None:
     test_file = tmp_path / "test_example.py"
     test_file.write_text(

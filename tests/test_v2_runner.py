@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from superpowers_runner_v2.logger import ExecutionLogger
 from superpowers_runner_v2.planner import Planner
 from superpowers_runner_v2.runner import Runner
@@ -49,6 +51,29 @@ def celsius_to_fahrenheit(celsius: float) -> float:
     def generate(self, step_name: str, prompt: str) -> str:
         self.calls.append(step_name)
         return self._responses[step_name].pop(0)
+
+
+class AlwaysBadImplementationClient(FakeLLMClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self._responses["implement_minimal"] = [
+            """
+```python
+import requests
+
+def celsius_to_fahrenheit(celsius: float) -> float:
+    return celsius * 9 / 5 + 32
+```
+""".strip(),
+            """
+```python
+import requests
+
+def celsius_to_fahrenheit(celsius: float) -> float:
+    return celsius * 9 / 5 + 32
+```
+""".strip(),
+        ]
 
 
 def test_runner_executes_fixed_step_sequence_and_retries_implementation(tmp_path: Path) -> None:
@@ -119,3 +144,25 @@ def test_runner_writes_execution_log_events(tmp_path: Path) -> None:
     assert '"event": "step_complete"' in execution_log
     assert '"event": "gate_failed"' in execution_log
     assert '"event": "gate_passed"' in execution_log
+
+
+def test_runner_logs_failure_before_raising_when_implementation_fails_twice(tmp_path: Path) -> None:
+    planner = Planner()
+    session = planner.plan("write a pure function that converts celsius to fahrenheit, with tests")
+    client = AlwaysBadImplementationClient()
+    state = StateManager(base_dir=tmp_path)
+    logger = ExecutionLogger(base_dir=tmp_path, session_id=session.session_id)
+    runner = Runner(
+        llm_client=client,
+        state_manager=state,
+        logger=logger,
+        base_dir=tmp_path,
+    )
+
+    with pytest.raises(RuntimeError):
+        runner.run(session)
+    logger.close()
+
+    execution_log = (tmp_path / session.session_id / "execution_log.jsonl").read_text()
+    assert '"event": "step_failed"' in execution_log
+    assert '"event": "session_failed"' in execution_log

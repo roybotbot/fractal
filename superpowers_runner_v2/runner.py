@@ -26,11 +26,14 @@ class Runner:
         state_manager: StateManager,
         logger: ExecutionLogger,
         base_dir: str | Path = "sessions_v2",
+        stop_after_step: str | None = None,
     ) -> None:
         self.llm_client = llm_client
         self.state_manager = state_manager
         self.logger = logger
         self.artifacts = ArtifactWriter(base_dir=base_dir)
+        # Test-only hook used by the CLI resume test to simulate interruption.
+        self.stop_after_step = stop_after_step
 
     def run(self, session: V2Session) -> V2Session:
         """Execute the fixed transformation step sequence.
@@ -45,16 +48,26 @@ class Runner:
         self.logger.log_event("session_started", task=session.task_prompt)
         self._restore_completed_artifacts(session)
 
-        for step in session.task.steps:
-            if step.status.value == "complete":
-                continue
+        try:
+            for step in session.task.steps:
+                if step.status.value == "complete":
+                    continue
 
-            if step.name == "implement_minimal":
-                self._run_implementation_step(session, step)
-            else:
-                self._run_simple_step(session, step)
+                if step.name == "implement_minimal":
+                    self._run_implementation_step(session, step)
+                else:
+                    self._run_simple_step(session, step)
 
-            self.state_manager.save(session)
+                self.state_manager.save(session)
+
+                # Optional stop point to simulate an interrupted session after a
+                # durable save. This keeps resume testing cheap and deterministic.
+                if self.stop_after_step and step.name == self.stop_after_step:
+                    self.logger.log_event("session_stopped", step=step.name)
+                    return session
+        except RuntimeError as exc:
+            self.logger.log_event("session_failed", reason=str(exc))
+            raise
 
         self.logger.log_event("session_complete", task_name=session.task.name)
         return session
@@ -126,6 +139,9 @@ class Runner:
                 self.logger.log_event("step_complete", step=step.name, attempt=attempt)
                 return
 
+        # Both attempts failed, so record an explicit step failure before
+        # surfacing the exception to the session-level caller.
+        self.logger.log_event("step_failed", step=step.name, attempt=step.attempt)
         raise RuntimeError("implement_minimal failed its gates twice")
 
     def _restore_completed_artifacts(self, session: V2Session) -> None:

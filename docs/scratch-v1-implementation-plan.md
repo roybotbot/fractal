@@ -86,10 +86,10 @@
 - Create: `superpowers_runner_v2/__main__.py`
 - Test: `tests/test_v2_cli.py`
 
-- [ ] **Step 1: Write failing tests for a minimal CLI run command**
-- [ ] **Step 2: Run targeted tests and verify they fail**
-- [ ] **Step 3: Implement minimal CLI**
-- [ ] **Step 4: Run targeted tests and verify they pass**
+- [x] **Step 1: Write failing tests for a minimal CLI run command**
+- [x] **Step 2: Run targeted tests and verify they fail**
+- [x] **Step 3: Implement minimal CLI**
+- [x] **Step 4: Run targeted tests and verify they pass**
 
 ### Task 8: End-to-end vertical slice
 
